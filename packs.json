@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "index_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs.json",
+  "license_audio": "https://github.com/humancto/voice-forge-packs/blob/main/LICENSE-AUDIO.md",
+  "takedown_url": "https://github.com/humancto/voice-forge-packs/issues/new",
+  "packs": {
+    "peter": {
+      "display_name": "Peter Griffin",
+      "description": "Peter Griffin from Family Guy, rendered with fish-speech S2 Pro from a 64s clip of the S5 Nike-commercial parody.",
+      "voice_source": "Peter Griffin (Family Guy, Fox)",
+      "source_clip_url": "https://www.youtube.com/watch?v=T2w5SQ0L65I",
+      "manifest_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs/peter/manifest.toml",
+      "tarball_url": "https://github.com/humancto/voice-forge-packs/releases/latest/download/peter.tar.gz",
+      "phrases": 13,
+      "sample_rate": 44100,
+      "rendered_with": "fishaudio/fish-speech S2 Pro",
+      "license": "Educational / research / local-testing use only",
+      "status": "shipping"
+    }
+  }
+}
