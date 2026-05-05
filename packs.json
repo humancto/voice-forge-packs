@@ -54,6 +54,23 @@
       "rendered_with": "fishaudio/fish-speech S2 Pro",
       "license": "Educational / research / local-testing use only",
       "status": "shipping"
+    },
+    "trump": {
+      "display_name": "Donald Trump",
+      "description": "Donald Trump rendered with fish-speech S2 Pro from a 65s White House small-business-week speech clip.",
+      "voice_source": "Donald Trump (White House, 2025)",
+      "source_clip_url": "https://www.youtube.com/watch?v=nyKh2EYGUDg",
+      "manifest_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs/trump/manifest.toml",
+      "tarball_url": "https://github.com/humancto/voice-forge-packs/releases/download/trump-v0.1.0/trump.tar.gz",
+      "tarball_sha256": "PLACEHOLDER",
+      "tarball_size_bytes": 0,
+      "version": "0.1.0",
+      "tier": "public-figure",
+      "phrases": 13,
+      "sample_rate": 44100,
+      "rendered_with": "fishaudio/fish-speech S2 Pro",
+      "license": "Educational / research / local-testing use only",
+      "status": "shipping"
     }
   }
 }
