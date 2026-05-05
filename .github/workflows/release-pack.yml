@@ -161,27 +161,37 @@ jobs:
           SHA: ${{ steps.tarball.outputs.sha }}
         run: |
           set -euo pipefail
-          # Defensive: only proceed if the commit-targeted files actually
-          # changed (i.e. the index needed updating).
-          if git diff --quiet packs.json "packs/${PACK}/checksums.txt"; then
-            echo "no index changes to commit"
-            exit 0
-          fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # We checked out at the tag (detached HEAD). The earlier steps
           # modified packs.json + checksums.txt in the working tree. Stash
-          # them, switch to main, pop, then commit. This way main gets the
-          # tag-derived index bump even though the tag itself is detached.
-          git stash push --include-untracked -m "release-pack-staged-bump" \
-            -- packs.json "packs/${PACK}/checksums.txt"
+          # would conflict if main has any divergent edits to these files
+          # (which happens when the manifest PR landed on main between
+          # tag creation and action execution). Use /tmp file copies
+          # instead — guaranteed conflict-free overwrite.
+          cp packs.json /tmp/_packs.json.bumped
+          cp "packs/${PACK}/checksums.txt" "/tmp/_${PACK}.checksums.txt.bumped"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Switch to main + pull latest. Detached HEAD changes are gone
+          # because we restored to a clean tree before checkout.
+          git checkout -- packs.json "packs/${PACK}/checksums.txt" || true
           git checkout main
-          # Pull latest main in case another release ran while we were
-          # in the tarball-build phase. Avoids non-fast-forward push.
           git pull --ff-only origin main
-          git stash pop
+
+          # Overwrite the index files on main with the bumped versions.
+          # This is the right behavior: the action is authoritative for
+          # tarball_url / sha / size / version on a release.
+          cp /tmp/_packs.json.bumped packs.json
+          cp "/tmp/_${PACK}.checksums.txt.bumped" "packs/${PACK}/checksums.txt"
+
+          if git diff --quiet packs.json "packs/${PACK}/checksums.txt"; then
+            echo "no index changes to commit (already in sync)"
+            exit 0
+          fi
           git add packs.json "packs/${PACK}/checksums.txt"
           git commit -m "release: ${PACK} ${TAG} (sha256=${SHA})"
+
           # If push races and gets rejected, pull --rebase + push once.
           if ! git push origin main; then
             echo "push race detected; rebasing + retrying"
