@@ -71,6 +71,23 @@
       "rendered_with": "fishaudio/fish-speech S2 Pro",
       "license": "Educational / research / local-testing use only",
       "status": "shipping"
+    },
+    "musk": {
+      "display_name": "Elon Musk",
+      "description": "Elon Musk rendered with fish-speech S2 Pro from a 65s segment of his Nikhil Kamath podcast.",
+      "voice_source": "Elon Musk (Nikhil Kamath WTF podcast)",
+      "source_clip_url": "https://www.youtube.com/watch?v=Rni7Fz7208c",
+      "manifest_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs/musk/manifest.toml",
+      "tarball_url": "https://github.com/humancto/voice-forge-packs/releases/download/musk-v0.1.0/musk.tar.gz",
+      "tarball_sha256": "PLACEHOLDER",
+      "tarball_size_bytes": 0,
+      "version": "0.1.0",
+      "tier": "public-figure",
+      "phrases": 13,
+      "sample_rate": 44100,
+      "rendered_with": "fishaudio/fish-speech S2 Pro",
+      "license": "Educational / research / local-testing use only",
+      "status": "shipping"
     }
   }
 }
