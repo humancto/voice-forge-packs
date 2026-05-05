@@ -173,9 +173,18 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Switch to main + pull latest. Detached HEAD changes are gone
-          # because we restored to a clean tree before checkout.
-          git checkout -- packs.json "packs/${PACK}/checksums.txt" || true
+          # Switch to main. Restore tracked files first so `git checkout main`
+          # doesn't bail with "your local changes would be overwritten."
+          # `git ls-files` filters to only files that exist in the index
+          # (some checksums.txt may not be tracked yet for first-release packs).
+          for f in packs.json "packs/${PACK}/checksums.txt"; do
+            if git ls-files --error-unmatch -- "$f" > /dev/null 2>&1; then
+              git checkout -- "$f"
+            fi
+          done
+          # Untracked checksums.txt that we just created stays in the
+          # working tree across the checkout — that's fine, `git checkout`
+          # doesn't touch untracked files.
           git checkout main
           git pull --ff-only origin main
 
