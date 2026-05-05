@@ -20,6 +20,23 @@
       "rendered_with": "fishaudio/fish-speech S2 Pro",
       "license": "Educational / research / local-testing use only",
       "status": "shipping"
+    },
+    "kimmel": {
+      "display_name": "Jimmy Kimmel",
+      "description": "Jimmy Kimmel from Jimmy Kimmel Live, rendered with fish-speech S2 Pro from a 63s monologue clip.",
+      "voice_source": "Jimmy Kimmel (Jimmy Kimmel Live, ABC)",
+      "source_clip_url": "https://www.youtube.com/watch?v=jYJRgh5xVTw",
+      "manifest_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs/kimmel/manifest.toml",
+      "tarball_url": "https://github.com/humancto/voice-forge-packs/releases/download/kimmel-v0.1.0/kimmel.tar.gz",
+      "tarball_sha256": "PLACEHOLDER",
+      "tarball_size_bytes": 0,
+      "version": "0.1.0",
+      "tier": "public-figure",
+      "phrases": 13,
+      "sample_rate": 44100,
+      "rendered_with": "fishaudio/fish-speech S2 Pro",
+      "license": "Educational / research / local-testing use only",
+      "status": "shipping"
     }
   }
 }
