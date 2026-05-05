@@ -169,10 +169,25 @@ jobs:
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # We checked out at the tag (detached HEAD). The earlier steps
+          # modified packs.json + checksums.txt in the working tree. Stash
+          # them, switch to main, pop, then commit. This way main gets the
+          # tag-derived index bump even though the tag itself is detached.
+          git stash push --include-untracked -m "release-pack-staged-bump" \
+            -- packs.json "packs/${PACK}/checksums.txt"
           git checkout main
+          # Pull latest main in case another release ran while we were
+          # in the tarball-build phase. Avoids non-fast-forward push.
+          git pull --ff-only origin main
+          git stash pop
           git add packs.json "packs/${PACK}/checksums.txt"
           git commit -m "release: ${PACK} ${TAG} (sha256=${SHA})"
-          git push origin main
+          # If push races and gets rejected, pull --rebase + push once.
+          if ! git push origin main; then
+            echo "push race detected; rebasing + retrying"
+            git pull --rebase origin main
+            git push origin main
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
