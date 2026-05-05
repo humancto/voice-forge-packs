@@ -37,6 +37,23 @@
       "rendered_with": "fishaudio/fish-speech S2 Pro",
       "license": "Educational / research / local-testing use only",
       "status": "shipping"
+    },
+    "neil_tyson": {
+      "display_name": "Neil deGrasse Tyson",
+      "description": "Astrophysicist Neil deGrasse Tyson, rendered with fish-speech S2 Pro from a 62s monologue clip.",
+      "voice_source": "Neil deGrasse Tyson (VladTV interview)",
+      "source_clip_url": "https://www.youtube.com/watch?v=OXs5KL9Sj04",
+      "manifest_url": "https://raw.githubusercontent.com/humancto/voice-forge-packs/main/packs/neil_tyson/manifest.toml",
+      "tarball_url": "https://github.com/humancto/voice-forge-packs/releases/download/neil_tyson-v0.1.0/neil_tyson.tar.gz",
+      "tarball_sha256": "PLACEHOLDER",
+      "tarball_size_bytes": 0,
+      "version": "0.1.0",
+      "tier": "public-figure",
+      "phrases": 13,
+      "sample_rate": 44100,
+      "rendered_with": "fishaudio/fish-speech S2 Pro",
+      "license": "Educational / research / local-testing use only",
+      "status": "shipping"
     }
   }
 }
