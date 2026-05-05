@@ -27,7 +27,7 @@ license       = "Educational / research / local-testing use only — see LICENSE
 takedown_url  = "https://github.com/humancto/voice-forge-packs/issues/new"
 
 # Per-event phrase text. Map keys must match wav/<event>.wav filenames.
-[phrases]
+[phrase_text]
 build_success   = "Holy crap Lois, the build passed. Sweet."
 build_failed    = "Holy crap Lois, the build is on fire. Somebody call the fire department."
 tests_passed    = "Hey Lois, the tests just passed. Get me a sandwich to celebrate."
