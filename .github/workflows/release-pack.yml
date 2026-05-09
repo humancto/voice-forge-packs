@@ -1,107 +1,113 @@
-name: Release pack tarball
+name: Release pack
 
 # Automates the tarball + sha256 + index update + GitHub release that
-# voiceforge consumes via `voiceforge pack install <name>`.
+# `voiceforge pack install <name>` consumes.
 #
-# Triggered by pushing a tag of the form `<pack>-v<semver>` (e.g.
-# `peter-v0.1.4`, `kimmel-v0.1.0`). The action will:
+# Triggered by tag push: <pack>-v<X.Y.Z> (e.g. peter-v0.1.0, kimmel-v0.1.0).
 #
-# 1. Validate the pack directory exists at packs/<pack>/.
-# 2. Validate manifest.toml schema_version == 1.
-# 3. Build a flat tarball (no <pack>/ prefix dir) so voiceforge
-#    extracts content directly into ~/.voiceforge/packs/<pack>/.
+# Steps:
+# 1. Validate manifest.toml schema.
+# 2. Regenerate checksums.txt from wav/ + reference.wav + manifest.toml.
+# 3. Build flat tarball under packs/<pack>/.
 # 4. Compute sha256 + size.
-# 5. Update packs.json with the new tarball_url, tarball_sha256,
-#    tarball_size_bytes, version. Commit + push to main on the same
-#    workflow run, signed with the GitHub Actions bot identity.
-# 6. Create the GitHub release with the tarball as a release asset.
-#
-# SECURITY: tag names are attacker-controlled (anyone with push access
-# can create one). Every `run:` step that consumes the tag does so via
-# an `env:` block so the value is shell-quoted, never substituted into
-# the script body via `${{ ... }}`. See:
-# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+# 5. Switch to main FIRST, then update packs.json on top of main's
+#    current state. (Earlier versions stashed the tag's packs.json and
+#    cp'd over main, which clobbered prior packs' sha bumps back to
+#    PLACEHOLDER. Fixed.)
+# 6. Commit the bump back to main.
+# 7. Create GitHub release with the tarball attached.
 
 on:
   push:
     tags:
       - "*-v[0-9]+.[0-9]+.[0-9]+"
+      - "*-v[0-9]+.[0-9]+.[0-9]+-*"
 
 permissions:
   contents: write  # tarball release + commit packs.json bump
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # need full history to push back to main
+          fetch-depth: 0   # need full history to switch to main + push
 
-      - name: Parse tag → pack name + version
+      - name: Parse pack + version from tag
         id: tag
         env:
-          GITHUB_REF: ${{ github.ref }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF##refs/tags/}"
-          # Whitelist the tag shape: <pack>-v<semver>. Pack name must
-          # match the same character class voiceforge accepts. Reject
-          # anything else loudly so a malformed tag doesn't slip into
-          # downstream steps.
-          if [[ ! "$tag" =~ ^[a-z0-9_-]+-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "tag $tag does not match <pack>-v<semver> with allowed chars" >&2
+          # Tag shape: <pack>-v<X.Y.Z>[-pre]. Extract pack and version.
+          if [[ ! "$TAG" =~ ^([a-z0-9_]+)-v([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?)$ ]]; then
+            echo "::error::tag $TAG does not match <pack>-v<semver>" >&2
             exit 1
           fi
-          pack="${tag%-v*}"
-          version="${tag##*-v}"
-          if [[ -z "$pack" || -z "$version" ]]; then
-            echo "tag $tag did not split into pack + version" >&2
-            exit 1
-          fi
-          echo "pack=$pack"       >> "$GITHUB_OUTPUT"
+          pack="${BASH_REMATCH[1]}"
+          version="${BASH_REMATCH[2]}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "pack=$pack" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "parsed: pack=$pack version=$version"
 
-      - name: Validate pack directory + manifest schema
+      - name: Validate manifest.toml schema
+        env:
+          PACK: ${{ steps.tag.outputs.pack }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import os, sys, tomllib
+          pack = os.environ["PACK"]
+          expected_version = os.environ["VERSION"]
+          path = f"packs/{pack}/manifest.toml"
+          if not os.path.exists(path):
+              print(f"::error::missing {path}", file=sys.stderr); sys.exit(1)
+          with open(path, "rb") as f:
+              m = tomllib.load(f)
+          required = ["schema_version", "name", "version", "voice_source",
+                      "tier", "reference_prompt_text"]
+          missing = [k for k in required if k not in m]
+          if missing:
+              print(f"::error::manifest.toml missing keys: {missing}", file=sys.stderr); sys.exit(1)
+          if m["name"] != pack:
+              print(f"::error::manifest name {m['name']!r} != tag pack {pack!r}", file=sys.stderr); sys.exit(1)
+          if m["version"] != expected_version:
+              print(f"::error::manifest version {m['version']!r} != tag version {expected_version!r}", file=sys.stderr); sys.exit(1)
+          if "phrase_text" not in m or not isinstance(m["phrase_text"], dict) or not m["phrase_text"]:
+              print(f"::error::manifest [phrase_text] table is missing or empty", file=sys.stderr); sys.exit(1)
+          print(f"manifest ok: pack={m['name']} version={m['version']} phrases={len(m['phrase_text'])}")
+          PYEOF
+
+      - name: Regenerate checksums.txt
         env:
           PACK: ${{ steps.tag.outputs.pack }}
         run: |
           set -euo pipefail
-          if [[ ! -d "packs/$PACK" ]]; then
-            echo "packs/$PACK does not exist" >&2
-            exit 1
-          fi
-          if [[ ! -f "packs/$PACK/manifest.toml" ]]; then
-            echo "packs/$PACK/manifest.toml missing" >&2
-            exit 1
-          fi
-          if [[ ! -d "packs/$PACK/wav" ]]; then
-            echo "packs/$PACK/wav/ missing" >&2
-            exit 1
-          fi
-          schema=$(grep -E "^schema_version\s*=\s*[0-9]+" "packs/$PACK/manifest.toml" | head -1 | sed -E 's/.*=\s*//' | tr -d ' ')
-          if [[ "$schema" != "1" ]]; then
-            echo "manifest.toml schema_version is $schema, expected 1" >&2
-            exit 1
-          fi
+          cd "packs/${PACK}"
+          # Skip macOS resource-fork files (._*) and the checksums file
+          # itself. Sort for reproducibility.
+          {
+            for f in $(find . -type f ! -name 'checksums.txt' ! -name '._*' | sort); do
+              sha=$(sha256sum "$f" | awk '{print $1}')
+              # Strip the leading ./
+              name="${f#./}"
+              printf '%s  %s\n' "$sha" "$name"
+            done
+          } > checksums.txt
+          echo "regenerated checksums.txt:"
+          cat checksums.txt
 
-      - name: Regenerate per-file checksums.txt
+      - name: Build flat tarball
         env:
           PACK: ${{ steps.tag.outputs.pack }}
         run: |
           set -euo pipefail
-          cd "packs/$PACK"
-          ( shasum -a 256 manifest.toml reference.wav wav/*.wav ) > checksums.txt
-
-      - name: Build flat tarball (no <pack>/ prefix dir)
-        env:
-          PACK: ${{ steps.tag.outputs.pack }}
-        run: |
-          set -euo pipefail
-          # COPYFILE_DISABLE is a Mac thing; on linux runners it's a
-          # no-op but documents intent.
+          # Flat layout: tar contents are manifest.toml, reference.wav,
+          # wav/, checksums.txt — no <pack>/ prefix. voiceforge pack install
+          # extracts into ~/.voiceforge/packs/<pack>/ and expects this layout.
           export COPYFILE_DISABLE=1
           tar -czf "/tmp/${PACK}.tar.gz" -C "packs/${PACK}" manifest.toml reference.wav wav checksums.txt
           ls -lh "/tmp/${PACK}.tar.gz"
@@ -117,10 +123,17 @@ jobs:
           echo "sha=$sha"   >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
 
-      - name: Update packs.json with new tarball_url + sha + size + version
-        # Python script reads tag inputs from env (NOT inline ${{ }})
-        # so attacker-controlled tag content can't break out of the
-        # script body. The Python program itself is a fixed literal.
+      - name: Bump packs.json on main (apply to main's CURRENT state, not the tag's)
+        # CRITICAL: the bump MUST be applied to main's CURRENT packs.json,
+        # not to the tag's snapshot. An earlier version of this workflow
+        # bumped packs.json IN THE TAG CHECKOUT and then cp'd it over
+        # main, which clobbered any sha bumps that landed between the tag
+        # and now. That regressed `trump` and `musk` to PLACEHOLDER and
+        # broke `voiceforge pack install` for both. The CI guard
+        # `tests/no-placeholder-sha.sh` (added in the same fix PR) will
+        # catch a recurrence, but the right structural fix is to
+        # `git checkout main` FIRST and only THEN apply the per-pack
+        # update on top of main's authoritative state.
         env:
           PACK: ${{ steps.tag.outputs.pack }}
           VERSION: ${{ steps.tag.outputs.version }}
@@ -130,6 +143,30 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Stash ONLY checksums.txt — per-pack, no cross-pack pollution.
+          # Do NOT stash packs.json (that was the bug we are fixing).
+          cp "packs/${PACK}/checksums.txt" "/tmp/_${PACK}.checksums.txt.bumped"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Restore tracked working-tree files so `git checkout main`
+          # doesn't bail. `git ls-files --error-unmatch` filters to files
+          # that exist in the tag's index (first-release checksums.txt
+          # may not be tracked yet — leave it as untracked, it survives
+          # the checkout untouched).
+          for f in packs.json "packs/${PACK}/checksums.txt"; do
+            if git ls-files --error-unmatch -- "$f" > /dev/null 2>&1; then
+              git checkout -- "$f"
+            fi
+          done
+          git checkout main
+          git pull --ff-only origin main
+
+          # Apply the per-pack update to MAIN's packs.json (which has all
+          # prior packs' real shas — preserve those). Python reads the
+          # env, so attacker-controlled tag content can't break out of
+          # the script. The Python program itself is a fixed literal.
           python3 - <<'PYEOF'
           import json, os, sys
           pack = os.environ["PACK"]
@@ -154,45 +191,18 @@ jobs:
               f.write("\n")
           PYEOF
 
-      - name: Commit packs.json bump back to main
-        env:
-          PACK: ${{ steps.tag.outputs.pack }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          SHA: ${{ steps.tarball.outputs.sha }}
-        run: |
-          set -euo pipefail
-          # We checked out at the tag (detached HEAD). The earlier steps
-          # modified packs.json + checksums.txt in the working tree. Stash
-          # would conflict if main has any divergent edits to these files
-          # (which happens when the manifest PR landed on main between
-          # tag creation and action execution). Use /tmp file copies
-          # instead — guaranteed conflict-free overwrite.
-          cp packs.json /tmp/_packs.json.bumped
-          cp "packs/${PACK}/checksums.txt" "/tmp/_${PACK}.checksums.txt.bumped"
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Switch to main. Restore tracked files first so `git checkout main`
-          # doesn't bail with "your local changes would be overwritten."
-          # `git ls-files` filters to only files that exist in the index
-          # (some checksums.txt may not be tracked yet for first-release packs).
-          for f in packs.json "packs/${PACK}/checksums.txt"; do
-            if git ls-files --error-unmatch -- "$f" > /dev/null 2>&1; then
-              git checkout -- "$f"
-            fi
-          done
-          # Untracked checksums.txt that we just created stays in the
-          # working tree across the checkout — that's fine, `git checkout`
-          # doesn't touch untracked files.
-          git checkout main
-          git pull --ff-only origin main
-
-          # Overwrite the index files on main with the bumped versions.
-          # This is the right behavior: the action is authoritative for
-          # tarball_url / sha / size / version on a release.
-          cp /tmp/_packs.json.bumped packs.json
+          # Restore the per-pack checksums.txt (action is authoritative
+          # for it on release).
           cp "/tmp/_${PACK}.checksums.txt.bumped" "packs/${PACK}/checksums.txt"
+
+          # Belt and braces: refuse to push if any pack would ship with
+          # PLACEHOLDER. Duplicates tests/no-placeholder-sha.sh's check
+          # so the workflow itself can't accidentally introduce one.
+          if grep -q '"tarball_sha256": "PLACEHOLDER"' packs.json; then
+            echo "::error::packs.json still contains PLACEHOLDER tarball_sha256 after bump; refusing to commit" >&2
+            grep -nE '"(tarball_sha256|display_name)"' packs.json
+            exit 1
+          fi
 
           if git diff --quiet packs.json "packs/${PACK}/checksums.txt"; then
             echo "no index changes to commit (already in sync)"
@@ -209,29 +219,22 @@ jobs:
           fi
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
         env:
           PACK: ${{ steps.tag.outputs.pack }}
           TAG: ${{ steps.tag.outputs.tag }}
-          VERSION: ${{ steps.tag.outputs.version }}
           SHA: ${{ steps.tarball.outputs.sha }}
-          SIZE: ${{ steps.tarball.outputs.size }}
-        with:
-          name: "${{ steps.tag.outputs.pack }} ${{ steps.tag.outputs.tag }}"
-          body: |
-            Pack: **${{ steps.tag.outputs.pack }}** version **${{ steps.tag.outputs.version }}**
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<NOTES
+          Auto-built tarball; sha256 verified by \`voiceforge pack install\`.
 
-            Auto-built tarball; sha256 verified by `voiceforge pack install`.
-
-            ```
-            sha256 = ${{ steps.tarball.outputs.sha }}
-            size   = ${{ steps.tarball.outputs.size }} bytes
-            ```
-
-            Install:
-
-            ```bash
-            voiceforge pack install ${{ steps.tag.outputs.pack }}
-            ```
-          files: /tmp/${{ steps.tag.outputs.pack }}.tar.gz
-          fail_on_unmatched_files: true
+          - sha256: \`${SHA}\`
+          - install: \`voiceforge pack install ${PACK}\`
+          - manifest: https://raw.githubusercontent.com/${{ github.repository }}/main/packs/${PACK}/manifest.toml
+          NOTES
+          )
+          gh release create "$TAG" \
+            "/tmp/${PACK}.tar.gz" \
+            --title "${PACK} ${TAG}" \
+            --notes "$notes"
