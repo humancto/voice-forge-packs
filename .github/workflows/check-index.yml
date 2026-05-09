@@ -1,0 +1,19 @@
+name: check pack index
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packs.json"
+      - "tests/**"
+  pull_request:
+    paths:
+      - "packs.json"
+      - "tests/**"
+
+jobs:
+  no-placeholder-sha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: regression guard — no PLACEHOLDER sha256 in packs.json
+        run: bash tests/no-placeholder-sha.sh
